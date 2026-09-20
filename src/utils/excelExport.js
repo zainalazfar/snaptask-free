@@ -1,105 +1,195 @@
 import ExcelJS from 'exceljs';
 
-export const DEFAULT_EXCEL_SETTINGS = {
-  preset: 'aesthetic', // 'compact', 'aesthetic', 'spacious', 'custom'
-  rowHeightText: 46,
-  rowHeightImage: 96,
-  taskColWidth: 55,
-  zebraStriping: true,
-  theme: 'slate' // 'slate' or 'indigo'
-};
+/**
+ * Prepares individual screenshots for a task:
+ * - Each image is processed individually with smooth rounded corners and high-resolution rendering.
+ * - Kept as distinct, separate image objects so that in Excel & Google Sheets,
+ *   each screenshot can be clicked, inspected, and manipulated independently (NOT grouped).
+ * - Placed side-by-side with balanced gap.
+ */
+async function prepareIndividualTaskImages(dataUrls, maxTotalW = 360, targetH = 88) {
+  if (!dataUrls || dataUrls.length === 0) return [];
 
-export const PRESET_OPTIONS = [
-  {
-    id: 'aesthetic',
-    name: 'Aesthetic & Balanced',
-    badge: 'Recommended',
-    description: 'Generous breathing room, clear typography, and beautifully proportioned screenshots.',
-    rowHeightText: 46,
-    rowHeightImage: 96,
-    taskColWidth: 55
-  },
-  {
-    id: 'spacious',
-    name: 'Spacious / Presentation',
-    badge: 'Executive',
-    description: 'Large screenshots and extra-wide columns designed for slide decks and client meetings.',
-    rowHeightText: 60,
-    rowHeightImage: 125,
-    taskColWidth: 70
-  },
-  {
-    id: 'compact',
-    name: 'Compact / High Density',
-    badge: 'Dense',
-    description: 'Tighter row spacing to review high volumes of tasks on a single screen.',
-    rowHeightText: 32,
-    rowHeightImage: 68,
-    taskColWidth: 42
-  }
-];
+  return new Promise((resolve) => {
+    let loaded = 0;
+    const imgElements = [];
 
-export function getSavedExcelSettings() {
-  try {
-    const saved = localStorage.getItem('snaptask_excel_settings');
-    if (saved) {
-      return { ...DEFAULT_EXCEL_SETTINGS, ...JSON.parse(saved) };
+    dataUrls.forEach((url, idx) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      img.onload = () => {
+        imgElements[idx] = img;
+        loaded++;
+        if (loaded === dataUrls.length) process();
+      };
+
+      img.onerror = () => {
+        imgElements[idx] = null;
+        loaded++;
+        if (loaded === dataUrls.length) process();
+      };
+
+      img.src = url;
+    });
+
+    function process() {
+      const validImages = imgElements.filter(Boolean);
+      if (validImages.length === 0) {
+        resolve([]);
+        return;
+      }
+
+      const count = validImages.length;
+      const gap = 10;
+
+      // Base target display height:
+      // Single image: 88px
+      // 2 images: 84px
+      // 3 images: 78px
+      // 4-5 images: 70px
+      let baseH = targetH;
+      if (count === 2) baseH = 84;
+      else if (count === 3) baseH = 78;
+      else if (count >= 4) baseH = 70;
+
+      // Calculate display dimensions for each image preserving natural aspect ratio
+      const items = validImages.map((img) => {
+        const natW = img.naturalWidth || img.width || 300;
+        const natH = img.naturalHeight || img.height || 200;
+        const aspect = natW / natH;
+        const w = Math.round(baseH * aspect);
+        return { img, natW, natH, aspect, w, h: baseH };
+      });
+
+      let totalW = items.reduce((sum, item) => sum + item.w, 0) + ((count - 1) * gap);
+
+      // If total width of all images exceeds max allowed space, scale down proportionally
+      if (totalW > maxTotalW) {
+        const scale = maxTotalW / totalW;
+        items.forEach((item) => {
+          item.w = Math.round(item.w * scale);
+          item.h = Math.round(item.h * scale);
+        });
+      }
+
+      // Render each image INDIVIDUALLY onto its own high-resolution canvas with rounded corners
+      const processedImages = items.map((item) => {
+        const highResH = Math.min(1600, Math.max(item.h * 4, item.natH));
+        const scaleFactor = Math.max(2, highResH / item.h);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(item.w * scaleFactor);
+        canvas.height = Math.round(item.h * scaleFactor);
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.scale(scaleFactor, scaleFactor);
+
+        const radius = Math.max(6, Math.min(14, Math.round(Math.min(item.w, item.h) * 0.08)));
+
+        ctx.save();
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(0, 0, item.w, item.h, radius);
+        } else {
+          ctx.moveTo(radius, 0);
+          ctx.lineTo(item.w - radius, 0);
+          ctx.quadraticCurveTo(item.w, 0, item.w, radius);
+          ctx.lineTo(item.w, item.h - radius);
+          ctx.quadraticCurveTo(item.w, item.h, item.w - radius, item.h);
+          ctx.lineTo(radius, item.h);
+          ctx.quadraticCurveTo(0, item.h, 0, item.h - radius);
+          ctx.lineTo(0, radius);
+          ctx.quadraticCurveTo(0, 0, radius, 0);
+          ctx.closePath();
+        }
+        ctx.clip();
+
+        ctx.drawImage(item.img, 0, 0, item.w, item.h);
+
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+
+        const pngDataUrl = canvas.toDataURL('image/png');
+        const base64Data = pngDataUrl.replace(/^data:image\/png;base64,/, '');
+
+        return {
+          base64: base64Data,
+          extension: 'png',
+          displayW: item.w,
+          displayH: item.h
+        };
+      });
+
+      resolve(processedImages);
     }
-  } catch (err) {
-    console.warn('Failed to load excel settings:', err);
-  }
-  return { ...DEFAULT_EXCEL_SETTINGS };
-}
-
-export function saveExcelSettings(settings) {
-  try {
-    localStorage.setItem('snaptask_excel_settings', JSON.stringify(settings));
-  } catch (err) {
-    console.warn('Failed to save excel settings:', err);
-  }
+  });
 }
 
 /**
  * Export tasks to styled Excel (.xlsx) file
  */
-export async function exportTasksToExcel(tasks, fileName = 'Meeting_Tasks.xlsx', options = {}) {
+export async function exportTasksToExcel(tasks, fileName = 'Meeting_Tasks.xlsx') {
   if (!tasks || tasks.length === 0) {
     alert('No tasks to export!');
     return;
   }
 
-  const config = { ...DEFAULT_EXCEL_SETTINGS, ...options };
-  const rowHeightText = Number(config.rowHeightText) || 46;
-  const rowHeightImage = Number(config.rowHeightImage) || 96;
-  const taskColWidth = Number(config.taskColWidth) || 55;
-  const zebra = config.zebraStriping !== false;
+  // Row heights in points (96pt = 128px)
+  const rowHeightText = 46;
+  const rowHeightImage = 96;
+  const taskColWidth = 55;
+  const zebraStriping = true;
+  const rowPixels = Math.round(rowHeightImage * 1.3333); // 128px
+  const gap = 10;
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'SnapTask Free';
   workbook.created = new Date();
 
+  // Single clean sheet
   const worksheet = workbook.addWorksheet('Meeting Tasks', {
     views: [{ showGridLines: true }]
   });
 
-  // Calculate image thumbnail size proportional to row height
-  const imgH = Math.max(45, Math.round(rowHeightImage * 0.72));
-  const imgW = Math.round(imgH * 1.45); // 16:10 / 3:2 screenshot aspect ratio
+  // Pre-process individual images for each task (limit to max 5 images per task)
+  const taskImagesList = [];
+  let maxNeededWidth = 140;
 
-  // Determine max pictures per row to adjust Image column width
-  let maxPicsInRow = 1;
-  tasks.forEach((task) => {
-    const pics = (task.pictures && task.pictures.length > 0)
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i];
+    const taskPictures = (task.pictures && task.pictures.length > 0)
       ? task.pictures
-      : (task.pictureData ? [task.pictureData] : []);
-    if (pics.length > maxPicsInRow) maxPicsInRow = pics.length;
-  });
+      : (task.pictureData ? [{ id: 'legacy-pic', data: task.pictureData, name: task.pictureName }] : []);
 
-  // Calculate image column width in Excel units (~7.5 pixels per unit)
-  const picUnitWidth = Math.max(16, Math.ceil((imgW + 16) / 7.5));
-  const imageColWidth = Math.max(26, maxPicsInRow * picUnitWidth + 4);
+    const rawUrls = taskPictures
+      .slice(0, 5) // Enforce maximum 5 images per task
+      .map((p) => p?.data || p)
+      .filter((url) => typeof url === 'string' && url.startsWith('data:image'));
 
-  // Set columns matching Task Table layout
+    if (rawUrls.length > 0) {
+      const individualImages = await prepareIndividualTaskImages(rawUrls, 360, 88);
+      taskImagesList.push(individualImages);
+
+      if (individualImages.length > 0) {
+        const taskTotalW = individualImages.reduce((sum, img) => sum + img.displayW, 0) + ((individualImages.length - 1) * gap);
+        if (taskTotalW > maxNeededWidth) {
+          maxNeededWidth = taskTotalW;
+        }
+      }
+    } else {
+      taskImagesList.push([]);
+    }
+  }
+
+  // Column B width tailored to the widest set of images + padding
+  const imageColWidth = Math.max(30, Math.min(68, Math.ceil((maxNeededWidth + 30) / 7.5)));
+  const colBPixels = imageColWidth * 7.5;
+
+  // Setup worksheet columns
   worksheet.columns = [
     { header: 'TASK DESCRIPTION', key: 'description', width: taskColWidth },
     { header: 'SCREENSHOT ATTACHMENTS', key: 'image', width: imageColWidth },
@@ -107,10 +197,7 @@ export async function exportTasksToExcel(tasks, fileName = 'Meeting_Tasks.xlsx',
     { header: 'DATE ADDED', key: 'createdAt', width: 24 }
   ];
 
-  // Header background color
-  const headerBgColor = config.theme === 'indigo' ? 'FF4F46E5' : 'FF0F172A';
-
-  // Style Header Row
+  // Style Header Row (Deep modern slate)
   const headerRow = worksheet.getRow(1);
   headerRow.height = 32;
   headerRow.eachCell((cell) => {
@@ -118,7 +205,7 @@ export async function exportTasksToExcel(tasks, fileName = 'Meeting_Tasks.xlsx',
     cell.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: headerBgColor }
+      fgColor: { argb: 'FF0F172A' }
     };
     cell.alignment = { vertical: 'middle', horizontal: 'center' };
     cell.border = {
@@ -136,18 +223,15 @@ export async function exportTasksToExcel(tasks, fileName = 'Meeting_Tasks.xlsx',
     right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
   };
 
-  let currentRowIdx = 2;
-
   for (let i = 0; i < tasks.length; i++) {
     const task = tasks[i];
+    const imageList = taskImagesList[i] || [];
+    const hasImages = imageList.length > 0;
+
     const dateObj = new Date(task.createdAt);
-    const dateFormatted = !isNaN(dateObj) ? dateObj.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : task.createdAt;
-
-    const taskPictures = (task.pictures && task.pictures.length > 0)
-      ? task.pictures
-      : (task.pictureData ? [{ id: 'legacy-pic', data: task.pictureData, name: task.pictureName }] : []);
-
-    const hasImages = taskPictures.length > 0;
+    const dateFormatted = !isNaN(dateObj) 
+      ? dateObj.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) 
+      : task.createdAt;
 
     const row = worksheet.addRow({
       description: task.description || '(No description)',
@@ -156,21 +240,21 @@ export async function exportTasksToExcel(tasks, fileName = 'Meeting_Tasks.xlsx',
       createdAt: dateFormatted
     });
 
-    // Apply custom row height
+    // Row Height
     row.height = hasImages ? rowHeightImage : rowHeightText;
 
     // Row zebra background
     const isEven = i % 2 === 1;
-    const rowBgColor = zebra && isEven ? 'FFF8FAFC' : 'FFFFFFFF';
+    const rowBgColor = zebraStriping && isEven ? 'FFF8FAFC' : 'FFFFFFFF';
 
-    // Style description cell
+    // 1. Task Description Cell
     const descCell = row.getCell('description');
     descCell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF1E293B' } };
     descCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     descCell.border = borderLight;
     descCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBgColor } };
 
-    // Style image cell
+    // 2. Screenshot Attachments Cell
     const imageCell = row.getCell('image');
     imageCell.alignment = { vertical: 'middle', horizontal: 'center' };
     imageCell.border = borderLight;
@@ -179,10 +263,16 @@ export async function exportTasksToExcel(tasks, fileName = 'Meeting_Tasks.xlsx',
       imageCell.font = { name: 'Segoe UI', size: 9, italic: true, color: { argb: 'FF94A3B8' } };
     }
 
-    // Style status cell (color-coded badge matching UI)
+    // 3. Progress Status Cell with Native Data Validation Dropdown
     const statusCell = row.getCell('status');
     statusCell.alignment = { vertical: 'middle', horizontal: 'center' };
     statusCell.border = borderLight;
+
+    statusCell.dataValidation = {
+      type: 'list',
+      allowBlank: false,
+      formulae: ['"Not Started,In Progress,Done"']
+    };
 
     const statusText = task.status || 'Not Started';
     let statusBg = 'FFFEE2E2';
@@ -199,46 +289,86 @@ export async function exportTasksToExcel(tasks, fileName = 'Meeting_Tasks.xlsx',
     statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: statusBg } };
     statusCell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: statusFg } };
 
-    // Style date cell
+    // 4. Date Cell
     const dateCell = row.getCell('createdAt');
     dateCell.font = { name: 'Segoe UI', size: 9, color: { argb: 'FF64748B' } };
     dateCell.alignment = { vertical: 'middle', horizontal: 'center' };
     dateCell.border = borderLight;
     dateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBgColor } };
 
-    // Insert images into Image cell
+    // 5. Position Images: Each as its own independent DrawingML object, side-by-side (NOT grouped)
     if (hasImages) {
-      for (let pIdx = 0; pIdx < taskPictures.length; pIdx++) {
-        const pic = taskPictures[pIdx];
-        if (pic.data && typeof pic.data === 'string' && pic.data.startsWith('data:image')) {
-          try {
-            const match = pic.data.match(/^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/);
-            if (match) {
-              const ext = match[1] === 'jpg' ? 'jpeg' : match[1];
+      try {
+        const totalTaskW = imageList.reduce((sum, img) => sum + img.displayW, 0) + ((imageList.length - 1) * gap);
+        let currentXOffset = Math.max(10, Math.round((colBPixels - totalTaskW) / 2));
 
-              const imageId = workbook.addImage({
-                base64: pic.data,
-                extension: ext
-              });
+        for (const img of imageList) {
+          const imageId = workbook.addImage({
+            base64: img.base64,
+            extension: 'png'
+          });
 
-              // Calculate proportional column placement inside column B (index 1)
-              const colOffset = 1.04 + (pIdx * ((imgW + 14) / (imageColWidth * 7.5)));
-              const rowVerticalOffset = Math.max(0.06, (rowHeightImage - imgH) / (rowHeightImage * 2));
+          // Exact vertical centering inside this row
+          const yOffsetPx = Math.max(6, Math.round((rowPixels - img.displayH) / 2));
 
-              worksheet.addImage(imageId, {
-                tl: { col: colOffset, row: (currentRowIdx - 1) + rowVerticalOffset },
-                ext: { width: imgW, height: imgH },
-                editAs: 'oneCell'
-              });
-            }
-          } catch (err) {
-            console.error('Error adding image to Excel:', err);
-          }
+          worksheet.addImage(imageId, {
+            tl: {
+              nativeCol: 1, // Column B
+              nativeColOff: Math.round(currentXOffset * 9525),
+              nativeRow: row.number - 1, // 0-indexed row matching this exact task row
+              nativeRowOff: Math.round(yOffsetPx * 9525)
+            },
+            ext: { width: img.displayW, height: img.displayH },
+            editAs: 'oneCell'
+          });
+
+          // Advance horizontal offset for the next image
+          currentXOffset += img.displayW + gap;
         }
+      } catch (err) {
+        console.error('Error adding individual images to cell:', err);
       }
     }
+  }
 
-    currentRowIdx++;
+  // Conditional Formatting for Progress Dropdown
+  if (tasks.length > 0) {
+    try {
+      worksheet.addConditionalFormatting({
+        ref: `C2:C${tasks.length + 1}`,
+        rules: [
+          {
+            type: 'cellIs',
+            operator: 'equal',
+            formulae: ['"Done"'],
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFDCFCE7' } },
+              font: { color: { argb: 'FF166534' }, bold: true }
+            }
+          },
+          {
+            type: 'cellIs',
+            operator: 'equal',
+            formulae: ['"In Progress"'],
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFEF3C7' } },
+              font: { color: { argb: 'FF92400E' }, bold: true }
+            }
+          },
+          {
+            type: 'cellIs',
+            operator: 'equal',
+            formulae: ['"Not Started"'],
+            style: {
+              fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFEE2E2' } },
+              font: { color: { argb: 'FF991B1B' }, bold: true }
+            }
+          }
+        ]
+      });
+    } catch (cfErr) {
+      console.warn('Conditional formatting note:', cfErr);
+    }
   }
 
   // Generate binary Excel buffer and trigger browser download

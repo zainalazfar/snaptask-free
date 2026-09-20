@@ -150,26 +150,42 @@ function TaskImageCell({
   setEditPicDesc 
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
+  const MAX_IMAGES = 5;
 
   const processFileToEditPictures = (file) => {
     if (!file || !file.type.startsWith('image/')) return;
     const reader = new FileReader();
     reader.onload = (e) => {
-      setEditPictures((prev) => [
-        ...prev,
-        {
-          id: Date.now() + Math.random(),
-          name: file.name || `Image_${prev.length + 1}.png`,
-          data: e.target.result
-        }
-      ]);
+      setEditPictures((prev) => {
+        if (prev && prev.length >= MAX_IMAGES) return prev;
+        return [
+          ...(prev || []),
+          {
+            id: Date.now() + Math.random(),
+            name: file.name || `Image_${(prev?.length || 0) + 1}.png`,
+            data: e.target.result
+          }
+        ];
+      });
     };
     reader.readAsDataURL(file);
   };
 
   const handleAddImageSelect = (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      Array.from(e.target.files).forEach(processFileToEditPictures);
+      const currentCount = editPictures ? editPictures.length : 0;
+      const remainingSlots = MAX_IMAGES - currentCount;
+      if (remainingSlots <= 0) {
+        alert(`Maximum of ${MAX_IMAGES} images allowed per task.`);
+        e.target.value = '';
+        return;
+      }
+      const filesToAdd = Array.from(e.target.files).slice(0, remainingSlots);
+      if (e.target.files.length > remainingSlots) {
+        alert(`Maximum ${MAX_IMAGES} images allowed per task. Only ${remainingSlots} more image${remainingSlots > 1 ? 's were' : ' was'} added.`);
+      }
+      filesToAdd.forEach(processFileToEditPictures);
+      e.target.value = '';
     }
   };
 
@@ -194,17 +210,19 @@ function TaskImageCell({
             </div>
           ))}
 
-          <label className="add-edit-thumb-btn">
-            <Plus size={16} />
-            <span>Add</span>
-            <input 
-              type="file" 
-              accept="image/*" 
-              multiple 
-              onChange={handleAddImageSelect}
-              style={{ display: 'none' }}
-            />
-          </label>
+          {(!editPictures || editPictures.length < MAX_IMAGES) && (
+            <label className="add-edit-thumb-btn" title="Add Image (Up to 5 images)">
+              <Plus size={16} />
+              <span>Add</span>
+              <input 
+                type="file" 
+                accept="image/*" 
+                multiple 
+                onChange={handleAddImageSelect}
+                style={{ display: 'none' }}
+              />
+            </label>
+          )}
         </div>
       </div>
     );

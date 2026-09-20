@@ -18,27 +18,48 @@ export default function ChatInput({ onAddTask }) {
     }
   }, [description]);
 
-  // Helper to process any image file (from drop, file input, or paste)
-  const processImageFile = (file) => {
-    if (!file || !file.type.startsWith('image/')) return;
+  const MAX_IMAGES = 5;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const imageData = e.target.result;
-      const imageName = file.name || `Screenshot_${new Date().toLocaleTimeString().replace(/:/g, '-')}.png`;
-      
-      setPastedImages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + Math.random(),
-          name: imageName,
-          data: imageData,
-          file: file,
-          size: (file.size / 1024).toFixed(1) + ' KB'
-        }
-      ]);
-    };
-    reader.readAsDataURL(file);
+  // Helper to add multiple image files with 5-image limit
+  const addImageFiles = (files) => {
+    const validFiles = Array.from(files).filter(
+      (file) => file && (file.type?.startsWith('image/') || file.type?.indexOf('image') !== -1)
+    );
+    if (validFiles.length === 0) return;
+
+    const remainingSlots = MAX_IMAGES - pastedImages.length;
+    if (remainingSlots <= 0) {
+      alert(`Maximum of ${MAX_IMAGES} images allowed per task.`);
+      return;
+    }
+
+    const filesToProcess = validFiles.slice(0, remainingSlots);
+    if (validFiles.length > remainingSlots) {
+      alert(`Maximum ${MAX_IMAGES} images allowed per task. Only ${remainingSlots} more image${remainingSlots > 1 ? 's were' : ' was'} added.`);
+    }
+
+    filesToProcess.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const imageData = e.target.result;
+        const imageName = file.name || `Screenshot_${new Date().toLocaleTimeString().replace(/:/g, '-')}.png`;
+
+        setPastedImages((prev) => {
+          if (prev.length >= MAX_IMAGES) return prev;
+          return [
+            ...prev,
+            {
+              id: Date.now() + Math.random(),
+              name: imageName,
+              data: imageData,
+              file: file,
+              size: (file.size / 1024).toFixed(1) + ' KB'
+            }
+          ];
+        });
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
   // Direct Clipboard Paste Handler (Ctrl+V)
@@ -46,28 +67,29 @@ export default function ChatInput({ onAddTask }) {
     const items = e.clipboardData && e.clipboardData.items;
     const files = e.clipboardData && e.clipboardData.files;
 
-    let processedAny = false;
+    let imageFiles = [];
 
-    // Check files array first (when copying multiple image files from File Explorer)
     if (files && files.length > 0) {
       for (let i = 0; i < files.length; i++) {
-        if (files[i].type.startsWith('image/')) {
-          processImageFile(files[i]);
-          processedAny = true;
+        if (files[i].type && files[i].type.startsWith('image/')) {
+          imageFiles.push(files[i]);
         }
       }
     }
 
-    // Check items (for direct screen capture pastes)
-    if (!processedAny && items) {
+    if (imageFiles.length === 0 && items) {
       for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
+        if (items[i].type && items[i].type.indexOf('image') !== -1) {
           const file = items[i].getAsFile();
           if (file) {
-            processImageFile(file);
+            imageFiles.push(file);
           }
         }
       }
+    }
+
+    if (imageFiles.length > 0) {
+      addImageFiles(imageFiles);
     }
   };
 
@@ -90,17 +112,14 @@ export default function ChatInput({ onAddTask }) {
     setIsDragOver(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      Array.from(e.dataTransfer.files).forEach((file) => {
-        processImageFile(file);
-      });
+      addImageFiles(e.dataTransfer.files);
     }
   };
 
   const handleFileSelect = (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      Array.from(e.target.files).forEach((file) => {
-        processImageFile(file);
-      });
+      addImageFiles(e.target.files);
+      e.target.value = '';
     }
   };
 
@@ -211,7 +230,14 @@ export default function ChatInput({ onAddTask }) {
           <button
             type="button"
             className="plus-icon-btn-pure"
-            onClick={() => fileInputRef.current?.click()}
+            title={pastedImages.length >= MAX_IMAGES ? 'Maximum 5 images reached' : 'Attach images (up to 5)'}
+            onClick={() => {
+              if (pastedImages.length >= MAX_IMAGES) {
+                alert(`Maximum of ${MAX_IMAGES} images allowed per task.`);
+                return;
+              }
+              fileInputRef.current?.click();
+            }}
           >
             <Plus size={25} />
           </button>

@@ -13,7 +13,6 @@ import ChatInput from './components/ChatInput.jsx';
 import TaskTable from './components/TaskTable.jsx';
 import ImageLightbox from './components/ImageLightbox.jsx';
 import ConfirmModal from './components/ConfirmModal.jsx';
-import ExcelExportModal from './components/ExcelExportModal.jsx';
 import LogoIcon from './components/LogoIcon.jsx';
 import { loadTasks, saveTasks } from './utils/storage.js';
 import { exportTasksToExcel } from './utils/excelExport.js';
@@ -47,7 +46,6 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   const [confirmModalConfig, setConfirmModalConfig] = useState({
     isOpen: false,
@@ -137,21 +135,22 @@ export default function App() {
     });
   };
 
-  // Open Excel Export Modal
-  const handleExportExcel = () => {
+  // Direct Export to Excel with Aesthetic Default Layout
+  const handleExportExcel = async () => {
     if (filteredTasks.length === 0) {
       showToast('No tasks to export! Add a task first.');
       return;
     }
-    setIsExportModalOpen(true);
-  };
-
-  // Execute Excel Export with user-chosen row/column dimensions
-  const handleConfirmExport = (options) => {
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
-    exportTasksToExcel(filteredTasks, `Meeting_Tasks_${timestamp}.xlsx`, options);
-    showToast('Excel file exported successfully!');
+    showToast('Exporting Excel spreadsheet with screenshots...');
+    try {
+      await exportTasksToExcel(filteredTasks, `Meeting_Tasks_${timestamp}.xlsx`);
+      showToast('Excel file exported successfully!');
+    } catch (err) {
+      console.error('Export failed:', err);
+      showToast('Export failed. Please check console.');
+    }
   };
 
   // Filter tasks based on search and tab filter
@@ -349,14 +348,6 @@ export default function App() {
         confirmText={confirmModalConfig.confirmText}
         onConfirm={confirmModalConfig.onConfirm}
         onCancel={() => setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }))}
-      />
-
-      {/* Excel Export Row & Column Dimensions Modal */}
-      <ExcelExportModal
-        isOpen={isExportModalOpen}
-        onClose={() => setIsExportModalOpen(false)}
-        onConfirmExport={handleConfirmExport}
-        tasksCount={filteredTasks.length}
       />
     </div>
   );
