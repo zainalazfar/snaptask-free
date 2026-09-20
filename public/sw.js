@@ -1,10 +1,11 @@
-const CACHE_NAME = 'snaptask-v1';
+const CACHE_NAME = 'snaptask-v2';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/pwa-icon-192.png',
-  '/pwa-icon-512.png'
+  '/snaptask/',
+  '/snaptask/index.html',
+  '/snaptask/favicon.png',
+  '/snaptask/manifest.json',
+  '/snaptask/pwa-icon-192.png',
+  '/snaptask/pwa-icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -49,7 +50,7 @@ self.addEventListener('fetch', (event) => {
             return cachedResponse;
           }
           if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
+            return caches.match('/snaptask/index.html');
           }
         });
       })

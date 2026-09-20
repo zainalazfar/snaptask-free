@@ -1,24 +1,30 @@
 {
-  "name": "SnapTask | Ultra-Fast Meeting Task Manager",
+  "name": "SnapTask",
   "short_name": "SnapTask",
   "description": "Ultra-fast meeting task management app with AI prompt input, clipboard image attachments, task status filtering, and Excel export.",
-  "start_url": "/",
+  "start_url": "/snaptask/",
+  "scope": "/snaptask/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
   "icons": [
     {
-      "src": "/pwa-icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "src": "/snaptask/favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
     },
     {
-      "src": "/pwa-icon-512.png",
+      "src": "/snaptask/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/snaptask/pwa-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }
