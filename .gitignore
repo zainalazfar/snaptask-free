@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+
+# Production build output
+dist
+
+# Environment & OS files
+.env
+.env.local
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Tauri Desktop Build Outputs
+src-tauri/target
+src-tauri/gen
+*.exe
+*.msi
+
