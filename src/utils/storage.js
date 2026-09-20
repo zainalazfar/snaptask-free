@@ -1,55 +1,38 @@
-const STORAGE_KEY = 'snaptask_free_tasks_v1';
+const STORAGE_KEY = 'snaptask_free_tasks_v2';
 
-export const INITIAL_TASKS = [
-  {
-    id: 'task-1726228800000-1',
-    description: 'Review Q3 API Specs with Frontend & Backend teams. Verify authentication token expiration logic.',
-    pictureData: null,
-    pictureName: '',
-    pictureDesc: 'Architecture diagram shared during Zoom presentation',
-    status: 'In Progress',
-    createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-    tags: ['Meeting', 'API']
-  },
-  {
-    id: 'task-1726228800000-2',
-    description: 'Fix layout responsiveness on dashboard header and add status filter dropdown for Excel export.',
-    pictureData: null,
-    pictureName: '',
-    pictureDesc: 'Screenshot of UI bug on mobile view',
-    status: 'Not Started',
-    createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-    tags: ['Frontend', 'UI']
-  },
-  {
-    id: 'task-1726228800000-3',
-    description: 'Update project timeline in Jira and email action items to product manager.',
-    pictureData: null,
-    pictureName: '',
-    pictureDesc: '',
-    status: 'Done',
-    createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
-    tags: ['Admin']
-  }
-];
+export const INITIAL_TASKS = [];
 
 export function loadTasks() {
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (!data) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_TASKS));
-      return INITIAL_TASKS;
+    // Check v2 first
+    const dataV2 = localStorage.getItem(STORAGE_KEY);
+    if (dataV2 !== null) {
+      return JSON.parse(dataV2);
     }
-    return JSON.parse(data);
+
+    // If first time running, clean any legacy sample tasks from v1
+    const oldData = localStorage.getItem('snaptask_free_tasks_v1');
+    if (oldData) {
+      const parsed = JSON.parse(oldData);
+      // If the old data only contains the sample tasks, discard them
+      const nonSampleTasks = parsed.filter(
+        (t) => !t.id?.startsWith('task-1726228800000-')
+      );
+      saveTasks(nonSampleTasks);
+      return nonSampleTasks;
+    }
+
+    // Default to clean empty list
+    return [];
   } catch (err) {
     console.error('Failed to load tasks from localStorage', err);
-    return INITIAL_TASKS;
+    return [];
   }
 }
 
 export function saveTasks(tasks) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks || []));
   } catch (err) {
     console.error('Failed to save tasks to localStorage', err);
   }
