@@ -13,8 +13,11 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  GripVertical,
+  FileCheck
 } from 'lucide-react';
+import CompleteModal from './CompleteModal.jsx';
 
 function CustomStatusSelect({ value, onChange }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -23,18 +26,17 @@ function CustomStatusSelect({ value, onChange }) {
   const menuRef = useRef(null);
 
   const options = [
-    { value: 'Not Started', label: 'Not Started', dotClass: 'dot-not-started', badgeClass: 'not-started' },
-    { value: 'In Progress', label: 'In Progress', dotClass: 'dot-in-progress', badgeClass: 'in-progress' },
+    { value: 'Open', label: 'Open', dotClass: 'dot-open', badgeClass: 'open' },
     { value: 'Done', label: 'Done', dotClass: 'dot-done', badgeClass: 'done' }
   ];
 
-  const currentOption = options.find((o) => o.value === value) || options[0];
+  const currentOption = options.find((o) => o.value === value) || (value === 'Done' ? options[1] : options[0]);
 
   const updatePosition = () => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      const menuHeight = 140;
+      const menuHeight = 95;
 
       if (spaceBelow < menuHeight && rect.top > menuHeight) {
         // Open UPWARDS above button
@@ -304,13 +306,80 @@ export default function TaskTable({
   onUpdateStatus, 
   onDeleteTask, 
   onUpdateTask, 
-  onOpenImage 
+  onOpenImage,
+  onReorderTasks
 }) {
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editDesc, setEditDesc] = useState('');
   const [editPicDesc, setEditPicDesc] = useState('');
   const [editPictures, setEditPictures] = useState([]);
   const [copiedId, setCopiedId] = useState(null);
+  const [completingTask, setCompletingTask] = useState(null);
+
+  // Status Change Interceptor: Opens CompleteModal with Remark & Evidence when Done is selected
+  const handleStatusChange = (task, newStatus) => {
+    if (newStatus === 'Done') {
+      setCompletingTask(task);
+    } else {
+      onUpdateStatus(task.id, newStatus);
+    }
+  };
+
+  const handleCompleteConfirm = ({ remark, evidencePictures }) => {
+    if (completingTask) {
+      onUpdateTask(completingTask.id, {
+        status: 'Done',
+        remark,
+        evidencePictures
+      });
+      setCompletingTask(null);
+    }
+  };
+
+  // Drag and drop state for reprioritizing tasks
+  const [canDragId, setCanDragId] = useState(null);
+  const [draggedId, setDraggedId] = useState(null);
+  const [dragOverInfo, setDragOverInfo] = useState({ id: null, position: null });
+
+  const handleDragStart = (e, taskId) => {
+    e.dataTransfer.setData('text/plain', taskId);
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedId(taskId);
+  };
+
+  const handleDragOver = (e, taskId) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (!draggedId || draggedId === taskId) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const position = (e.clientY - rect.top) < rect.height / 2 ? 'before' : 'after';
+    if (dragOverInfo.id !== taskId || dragOverInfo.position !== position) {
+      setDragOverInfo({ id: taskId, position });
+    }
+  };
+
+  const handleDragLeave = (e, taskId) => {
+    if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) return;
+    if (dragOverInfo.id === taskId) {
+      setDragOverInfo({ id: null, position: null });
+    }
+  };
+
+  const handleDrop = (e, targetTaskId) => {
+    e.preventDefault();
+    if (draggedId && draggedId !== targetTaskId && onReorderTasks) {
+      onReorderTasks(draggedId, targetTaskId, dragOverInfo.position || 'after');
+    }
+    setDraggedId(null);
+    setCanDragId(null);
+    setDragOverInfo({ id: null, position: null });
+  };
+
+  const handleDragEnd = () => {
+    setDraggedId(null);
+    setCanDragId(null);
+    setDragOverInfo({ id: null, position: null });
+  };
 
   const startEditing = (task) => {
     setEditingTaskId(task.id);
@@ -355,17 +424,11 @@ export default function TaskTable({
           className: 'status-badge status-done',
           icon: <CheckCircle2 size={14} />
         };
-      case 'In Progress':
-        return {
-          label: 'In Progress',
-          className: 'status-badge status-in-progress',
-          icon: <Clock size={14} />
-        };
-      case 'Not Started':
+      case 'Open':
       default:
         return {
-          label: 'Not Started',
-          className: 'status-badge status-not-started',
+          label: 'Open',
+          className: 'status-badge status-open',
           icon: <AlertCircle size={14} />
         };
     }
@@ -387,6 +450,7 @@ export default function TaskTable({
       <table className="task-table">
         <thead>
           <tr>
+            <th className="col-drag" title="Drag to reprioritize"></th>
             <th className="col-desc">TASK</th>
             <th className="col-pic">IMAGE</th>
             <th className="col-progress">Progress</th>
@@ -396,6 +460,9 @@ export default function TaskTable({
         <tbody>
           {tasks.map((task, index) => {
             const isEditing = editingTaskId === task.id;
+            const isDragging = draggedId === task.id;
+            const isDropTarget = dragOverInfo.id === task.id;
+            const dropClass = isDropTarget ? `drop-target-${dragOverInfo.position}` : '';
             const statusInfo = getStatusBadge(task.status);
             
             // Normalize pictures list for backwards compatibility
@@ -404,7 +471,28 @@ export default function TaskTable({
               : (task.pictureData ? [{ id: 'legacy-pic', data: task.pictureData, name: task.pictureName }] : []);
 
             return (
-              <tr key={task.id} className={`task-row status-${task.status.toLowerCase().replace(/\s+/g, '-')}`}>
+              <tr 
+                key={task.id} 
+                className={`task-row status-${task.status.toLowerCase().replace(/\s+/g, '-')} ${isDragging ? 'is-dragging' : ''} ${dropClass}`}
+                draggable={canDragId === task.id && !isEditing}
+                onDragStart={(e) => handleDragStart(e, task.id)}
+                onDragOver={(e) => handleDragOver(e, task.id)}
+                onDragLeave={(e) => handleDragLeave(e, task.id)}
+                onDrop={(e) => handleDrop(e, task.id)}
+                onDragEnd={handleDragEnd}
+              >
+                {/* Drag Handle Column */}
+                <td className="col-drag">
+                  <div 
+                    className="drag-handle-btn" 
+                    title="Click and drag to reprioritize task"
+                    onMouseDown={() => setCanDragId(task.id)}
+                    onMouseUp={() => setCanDragId(null)}
+                    onTouchStart={() => setCanDragId(task.id)}
+                  >
+                    <GripVertical size={16} />
+                  </div>
+                </td>
                 {/* Column 1: Task Description */}
                 <td className="col-desc">
                   {isEditing ? (
@@ -437,12 +525,31 @@ export default function TaskTable({
                   />
                 </td>
 
-                {/* Column 3: Custom Viewport Portal Status Dropdown */}
+                {/* Column 3: Custom Viewport Portal Status Dropdown & Evidence Pill */}
                 <td className="col-progress">
-                  <CustomStatusSelect
-                    value={task.status}
-                    onChange={(newStatus) => onUpdateStatus(task.id, newStatus)}
-                  />
+                  <div className="progress-cell-stack">
+                    <CustomStatusSelect
+                      value={task.status}
+                      onChange={(newStatus) => handleStatusChange(task, newStatus)}
+                    />
+                    {task.status === 'Done' && (
+                      <button
+                        type="button"
+                        className={`evidence-pill-btn ${(task.remark || task.evidencePictures?.length > 0) ? 'has-evidence' : 'empty-evidence'}`}
+                        onClick={() => setCompletingTask(task)}
+                        title="Click to view or edit completion remark & evidence"
+                      >
+                        <FileCheck size={12} />
+                        <span>
+                          {task.evidencePictures?.length > 0
+                            ? `Evidence (${task.evidencePictures.length})`
+                            : task.remark
+                              ? 'Remark'
+                              : 'Remark / Proof'}
+                        </span>
+                      </button>
+                    )}
+                  </div>
                 </td>
 
                 {/* Actions Column */}
@@ -486,6 +593,16 @@ export default function TaskTable({
           })}
         </tbody>
       </table>
+
+      {completingTask && (
+        <CompleteModal
+          isOpen={Boolean(completingTask)}
+          task={completingTask}
+          onConfirm={handleCompleteConfirm}
+          onCancel={() => setCompletingTask(null)}
+          onOpenImage={onOpenImage}
+        />
+      )}
     </div>
   );
 }

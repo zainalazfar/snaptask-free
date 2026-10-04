@@ -152,7 +152,7 @@ export default function ChatInput({ onAddTask }) {
         pictureData: picturesList.length > 0 ? picturesList[0].data : null,
         pictureName: picturesList.length > 0 ? picturesList[0].name : '',
         pictureDesc: '',
-        status: 'Not Started'
+        status: 'Open'
       });
 
       setDescription('');

@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { X, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function ImageLightbox({ image, onClose }) {
-  const pictures = (image?.pictures && image.pictures.length > 0)
-    ? image.pictures
-    : (image?.data ? [{ data: image.data, name: image.name }] : []);
+  const pictures = typeof image === 'string'
+    ? [{ data: image, name: 'Evidence Screenshot' }]
+    : (image?.pictures && image.pictures.length > 0)
+      ? image.pictures
+      : (image?.data ? [{ data: image.data, name: image.name || 'Screenshot' }] : []);
 
   const [activeIndex, setActiveIndex] = useState(image?.currentIndex || 0);
 

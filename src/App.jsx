@@ -41,7 +41,7 @@ function GradientPlusIcon({ size = 22 }) {
 export default function App() {
   const [tasks, setTasks] = useState(() => loadTasks());
   const [activeTab, setActiveTab] = useState('add'); // 'add' or 'list'
-  const [filter, setFilter] = useState('all'); // 'all', 'Not Started', 'In Progress', 'Done'
+  const [filter, setFilter] = useState('Open'); // 'Open' or 'Done'
   const [searchQuery, setSearchQuery] = useState('');
   const [darkMode, setDarkMode] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -85,7 +85,7 @@ export default function App() {
       pictureData: newTaskData.pictureData,
       pictureName: newTaskData.pictureName,
       pictureDesc: newTaskData.pictureDesc,
-      status: newTaskData.status || 'Not Started',
+      status: newTaskData.status || 'Open',
       createdAt: new Date().toISOString()
     };
 
@@ -105,6 +105,28 @@ export default function App() {
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, ...updatedFields } : t))
     );
+    if (updatedFields.status === 'Done') {
+      showToast('Task marked as Done with evidence!');
+    }
+  };
+
+  // Reorder tasks via Drag and Drop
+  const handleReorderTasks = (draggedId, targetId, position = 'after') => {
+    setTasks((prevTasks) => {
+      const draggedIndex = prevTasks.findIndex((t) => t.id === draggedId);
+      const targetIndex = prevTasks.findIndex((t) => t.id === targetId);
+      if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) {
+        return prevTasks;
+      }
+
+      const newTasks = [...prevTasks];
+      const [draggedItem] = newTasks.splice(draggedIndex, 1);
+
+      const newTargetIndex = newTasks.findIndex((t) => t.id === targetId);
+      const insertIndex = position === 'after' ? newTargetIndex + 1 : newTargetIndex;
+      newTasks.splice(insertIndex, 0, draggedItem);
+      return newTasks;
+    });
   };
 
   // Delete task modal trigger
@@ -153,9 +175,9 @@ export default function App() {
     }
   };
 
-  // Filter tasks based on search and tab filter
+  // Filter tasks based on search and tab filter (Open vs Done)
   const filteredTasks = tasks.filter((t) => {
-    const matchesFilter = filter === 'all' || t.status === filter;
+    const matchesFilter = filter === 'Done' ? t.status === 'Done' : t.status !== 'Done';
     const matchesSearch = 
       t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (t.pictureDesc && t.pictureDesc.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -163,8 +185,7 @@ export default function App() {
   });
 
   // Calculate stats
-  const notStartedCount = tasks.filter((t) => t.status === 'Not Started').length;
-  const inProgressCount = tasks.filter((t) => t.status === 'In Progress').length;
+  const openCount = tasks.filter((t) => t.status !== 'Done').length;
   const doneCount = tasks.filter((t) => t.status === 'Done').length;
 
   return (
@@ -235,9 +256,9 @@ export default function App() {
             <ListTodo size={19} />
           </button>
 
-          {tasks.length > 0 && (
+          {openCount > 0 && (
             <span className="pill-floating-badge">
-              {tasks.length}
+              {openCount}
             </span>
           )}
         </div>
@@ -260,24 +281,11 @@ export default function App() {
             <div className="control-bar">
               <div className="filter-tabs">
                 <button
-                  className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
-                  onClick={() => setFilter('all')}
+                  className={`filter-tab ${filter === 'Open' ? 'active' : ''}`}
+                  onClick={() => setFilter('Open')}
                 >
-                  All ({tasks.length})
-                </button>
-                <button
-                  className={`filter-tab ${filter === 'Not Started' ? 'active' : ''}`}
-                  onClick={() => setFilter('Not Started')}
-                >
-                  <span className="dot dot-not-started"></span>
-                  Not Started ({notStartedCount})
-                </button>
-                <button
-                  className={`filter-tab ${filter === 'In Progress' ? 'active' : ''}`}
-                  onClick={() => setFilter('In Progress')}
-                >
-                  <span className="dot dot-in-progress"></span>
-                  In Progress ({inProgressCount})
+                  <span className="dot dot-open"></span>
+                  Open ({openCount})
                 </button>
                 <button
                   className={`filter-tab ${filter === 'Done' ? 'active' : ''}`}
@@ -327,6 +335,7 @@ export default function App() {
                 onDeleteTask={handleDeleteTask}
                 onUpdateTask={handleUpdateTask}
                 onOpenImage={(img) => setSelectedImage(img)}
+                onReorderTasks={handleReorderTasks}
               />
             </section>
           </div>

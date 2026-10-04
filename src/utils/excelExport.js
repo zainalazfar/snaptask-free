@@ -185,16 +185,49 @@ export async function exportTasksToExcel(tasks, fileName = 'Meeting_Tasks.xlsx')
     }
   }
 
+  // Pre-process evidence images for each task (1 image per evidence)
+  const evidenceImagesList = [];
+  let maxEvidenceWidth = 100;
+
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i];
+    const evPics = (task.evidencePictures && task.evidencePictures.length > 0)
+      ? task.evidencePictures
+      : [];
+
+    const rawEvUrls = evPics
+      .slice(0, 1) // Enforce 1 image per evidence
+      .map((p) => p?.data || p)
+      .filter((url) => typeof url === 'string' && url.startsWith('data:image'));
+
+    if (rawEvUrls.length > 0) {
+      const preparedEv = await prepareIndividualTaskImages(rawEvUrls, 360, 88);
+      evidenceImagesList.push(preparedEv);
+
+      if (preparedEv.length > 0 && preparedEv[0].displayW > maxEvidenceWidth) {
+        maxEvidenceWidth = preparedEv[0].displayW;
+      }
+    } else {
+      evidenceImagesList.push([]);
+    }
+  }
+
   // Column B width tailored to the widest set of images + padding
   const imageColWidth = Math.max(30, Math.min(68, Math.ceil((maxNeededWidth + 30) / 7.5)));
   const colBPixels = imageColWidth * 7.5;
 
-  // Setup worksheet columns
+  // Column E width tailored to evidence image + padding
+  const evidenceColWidth = Math.max(26, Math.min(50, Math.ceil((maxEvidenceWidth + 24) / 7.5)));
+  const colEPixels = evidenceColWidth * 7.5;
+
+  // Setup worksheet columns with dedicated REMARK and EVIDENCE columns
   worksheet.columns = [
     { header: 'TASK DESCRIPTION', key: 'description', width: taskColWidth },
     { header: 'SCREENSHOT ATTACHMENTS', key: 'image', width: imageColWidth },
-    { header: 'PROGRESS', key: 'status', width: 20 },
-    { header: 'DATE ADDED', key: 'createdAt', width: 24 }
+    { header: 'PROGRESS', key: 'status', width: 18 },
+    { header: 'REMARK', key: 'remark', width: 32 },
+    { header: 'EVIDENCE', key: 'evidence', width: evidenceColWidth },
+    { header: 'DATE ADDED', key: 'createdAt', width: 22 }
   ];
 
   // Style Header Row (Deep modern slate)
@@ -227,21 +260,27 @@ export async function exportTasksToExcel(tasks, fileName = 'Meeting_Tasks.xlsx')
     const task = tasks[i];
     const imageList = taskImagesList[i] || [];
     const hasImages = imageList.length > 0;
+    const evImageList = evidenceImagesList[i] || [];
+    const hasEvidence = evImageList.length > 0;
 
     const dateObj = new Date(task.createdAt);
     const dateFormatted = !isNaN(dateObj) 
       ? dateObj.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) 
       : task.createdAt;
 
+    const exportDesc = task.description || '(No description)';
+
     const row = worksheet.addRow({
-      description: task.description || '(No description)',
+      description: exportDesc,
       image: hasImages ? '' : 'N/A',
-      status: task.status || 'Not Started',
+      status: task.status === 'Done' ? 'Done' : 'Open',
+      remark: task.remark || '-',
+      evidence: hasEvidence ? '' : 'N/A',
       createdAt: dateFormatted
     });
 
-    // Row Height
-    row.height = hasImages ? rowHeightImage : rowHeightText;
+    // Row Height (accommodates either task screenshot or evidence screenshot)
+    row.height = (hasImages || hasEvidence) ? rowHeightImage : (task.remark && task.remark.length > 60 ? 56 : rowHeightText);
 
     // Row zebra background
     const isEven = i % 2 === 1;
@@ -271,32 +310,45 @@ export async function exportTasksToExcel(tasks, fileName = 'Meeting_Tasks.xlsx')
     statusCell.dataValidation = {
       type: 'list',
       allowBlank: false,
-      formulae: ['"Not Started,In Progress,Done"']
+      formulae: ['"Open,Done"']
     };
 
-    const statusText = task.status || 'Not Started';
+    const statusText = task.status === 'Done' ? 'Done' : 'Open';
     let statusBg = 'FFFEE2E2';
     let statusFg = 'FF991B1B';
 
     if (statusText === 'Done') {
       statusBg = 'FFDCFCE7';
       statusFg = 'FF166534';
-    } else if (statusText === 'In Progress') {
-      statusBg = 'FFFEF3C7';
-      statusFg = 'FF92400E';
     }
 
     statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: statusBg } };
     statusCell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: statusFg } };
 
-    // 4. Date Cell
+    // 4. Remark Cell
+    const remarkCell = row.getCell('remark');
+    remarkCell.font = { name: 'Segoe UI', size: 9.5, italic: !task.remark, color: { argb: task.remark ? 'FF1E293B' : 'FF94A3B8' } };
+    remarkCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+    remarkCell.border = borderLight;
+    remarkCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBgColor } };
+
+    // 5. Evidence Cell
+    const evidenceCell = row.getCell('evidence');
+    evidenceCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    evidenceCell.border = borderLight;
+    evidenceCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBgColor } };
+    if (!hasEvidence) {
+      evidenceCell.font = { name: 'Segoe UI', size: 9, italic: true, color: { argb: 'FF94A3B8' } };
+    }
+
+    // 6. Date Cell
     const dateCell = row.getCell('createdAt');
     dateCell.font = { name: 'Segoe UI', size: 9, color: { argb: 'FF64748B' } };
     dateCell.alignment = { vertical: 'middle', horizontal: 'center' };
     dateCell.border = borderLight;
     dateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBgColor } };
 
-    // 5. Position Images: Each as its own independent DrawingML object, side-by-side (NOT grouped)
+    // 7. Position Task Screenshot Images (Column B)
     if (hasImages) {
       try {
         const totalTaskW = imageList.reduce((sum, img) => sum + img.displayW, 0) + ((imageList.length - 1) * gap);
@@ -315,18 +367,44 @@ export async function exportTasksToExcel(tasks, fileName = 'Meeting_Tasks.xlsx')
             tl: {
               nativeCol: 1, // Column B
               nativeColOff: Math.round(currentXOffset * 9525),
-              nativeRow: row.number - 1, // 0-indexed row matching this exact task row
+              nativeRow: row.number - 1,
               nativeRowOff: Math.round(yOffsetPx * 9525)
             },
             ext: { width: img.displayW, height: img.displayH },
             editAs: 'oneCell'
           });
 
-          // Advance horizontal offset for the next image
           currentXOffset += img.displayW + gap;
         }
       } catch (err) {
-        console.error('Error adding individual images to cell:', err);
+        console.error('Error adding task images to cell:', err);
+      }
+    }
+
+    // 8. Position Evidence Image (Column E)
+    if (hasEvidence) {
+      try {
+        const evImg = evImageList[0];
+        const imageId = workbook.addImage({
+          base64: evImg.base64,
+          extension: 'png'
+        });
+
+        const xOffsetPx = Math.max(8, Math.round((colEPixels - evImg.displayW) / 2));
+        const yOffsetPx = Math.max(6, Math.round((rowPixels - evImg.displayH) / 2));
+
+        worksheet.addImage(imageId, {
+          tl: {
+            nativeCol: 4, // Column E (EVIDENCE)
+            nativeColOff: Math.round(xOffsetPx * 9525),
+            nativeRow: row.number - 1,
+            nativeRowOff: Math.round(yOffsetPx * 9525)
+          },
+          ext: { width: evImg.displayW, height: evImg.displayH },
+          editAs: 'oneCell'
+        });
+      } catch (err) {
+        console.error('Error adding evidence image to Excel:', err);
       }
     }
   }
