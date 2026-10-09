@@ -14,7 +14,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  GripVertical,
   FileCheck
 } from 'lucide-react';
 import CompleteModal from './CompleteModal.jsx';
@@ -336,12 +335,16 @@ export default function TaskTable({
     }
   };
 
-  // Drag and drop state for reprioritizing tasks
-  const [canDragId, setCanDragId] = useState(null);
+  // Drag and drop state for reprioritizing tasks (Option 2: Full-Row Drag)
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverInfo, setDragOverInfo] = useState({ id: null, position: null });
 
   const handleDragStart = (e, taskId) => {
+    // Prevent dragging when clicking inside interactive elements
+    if (e.target.closest('button, textarea, input, select, .custom-status-trigger, .pic-preview-card, .action-btn, .evidence-pill-btn, .carousel-arrow-btn, .carousel-thumb-dot')) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData('text/plain', taskId);
     e.dataTransfer.effectAllowed = 'move';
     setDraggedId(taskId);
@@ -371,13 +374,11 @@ export default function TaskTable({
       onReorderTasks(draggedId, targetTaskId, dragOverInfo.position || 'after');
     }
     setDraggedId(null);
-    setCanDragId(null);
     setDragOverInfo({ id: null, position: null });
   };
 
   const handleDragEnd = () => {
     setDraggedId(null);
-    setCanDragId(null);
     setDragOverInfo({ id: null, position: null });
   };
 
@@ -450,7 +451,6 @@ export default function TaskTable({
       <table className="task-table">
         <thead>
           <tr>
-            <th className="col-drag" title="Drag to reprioritize"></th>
             <th className="col-desc">TASK</th>
             <th className="col-pic">IMAGE</th>
             <th className="col-progress">Progress</th>
@@ -470,29 +470,19 @@ export default function TaskTable({
               ? task.pictures
               : (task.pictureData ? [{ id: 'legacy-pic', data: task.pictureData, name: task.pictureName }] : []);
 
+            const hasPictures = taskPictures.length > 0;
+
             return (
               <tr 
                 key={task.id} 
-                className={`task-row status-${task.status.toLowerCase().replace(/\s+/g, '-')} ${isDragging ? 'is-dragging' : ''} ${dropClass}`}
-                draggable={canDragId === task.id && !isEditing}
+                className={`task-row status-${task.status.toLowerCase().replace(/\s+/g, '-')} ${hasPictures ? 'has-pic' : 'no-pic'} ${isEditing ? 'is-editing' : ''} ${isDragging ? 'is-dragging' : ''} ${dropClass}`}
+                draggable={!isEditing}
                 onDragStart={(e) => handleDragStart(e, task.id)}
                 onDragOver={(e) => handleDragOver(e, task.id)}
                 onDragLeave={(e) => handleDragLeave(e, task.id)}
                 onDrop={(e) => handleDrop(e, task.id)}
                 onDragEnd={handleDragEnd}
               >
-                {/* Drag Handle Column */}
-                <td className="col-drag">
-                  <div 
-                    className="drag-handle-btn" 
-                    title="Click and drag to reprioritize task"
-                    onMouseDown={() => setCanDragId(task.id)}
-                    onMouseUp={() => setCanDragId(null)}
-                    onTouchStart={() => setCanDragId(task.id)}
-                  >
-                    <GripVertical size={16} />
-                  </div>
-                </td>
                 {/* Column 1: Task Description */}
                 <td className="col-desc">
                   {isEditing ? (

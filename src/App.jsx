@@ -89,7 +89,7 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
 
-    setTasks((prev) => [newTask, ...prev]);
+    setTasks((prev) => [...prev, newTask]);
     showToast('Task added successfully!');
   };
 
@@ -198,70 +198,125 @@ export default function App() {
         </div>
       )}
 
-      {/* Top Header Navbar */}
-      <header className="app-header">
-        <div className="header-left">
-          <div className="app-logo">
-            <LogoIcon className="logo-icon" size={56} />
-            <div className="logo-text">
-              <h1>SnapTask</h1>
+      {/* Sticky Header Section (Everything above the task card) */}
+      <div className="sticky-header-container">
+        {/* Top Header Navbar */}
+        <header className="app-header">
+          <div className="header-left">
+            <div className="app-logo">
+              <LogoIcon className="logo-icon" size={56} />
+              <div className="logo-text">
+                <h1>SnapTask</h1>
+              </div>
             </div>
+          </div>
+
+          <div className="header-actions">
+            {activeTab === 'list' && (
+              <button 
+                className="btn-export-excel" 
+                onClick={handleExportExcel}
+                title="Export all tasks to formatted Excel spreadsheet"
+              >
+                <FileSpreadsheet size={18} />
+                <span>Export to Excel</span>
+              </button>
+            )}
+
+            <button 
+              className="theme-toggle-btn" 
+              onClick={() => setDarkMode(!darkMode)}
+              title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+          </div>
+        </header>
+
+        {/* Icon-Only Equal Width Slidable Top Pill Menu */}
+        <div className="pill-menu-container">
+          <div className="pill-menu-track">
+            <div 
+              className="pill-slider-highlight"
+              style={{
+                transform: activeTab === 'add' ? 'translateX(0px)' : 'translateX(64px)'
+              }}
+            />
+            <button
+              className={`pill-tab ${activeTab === 'add' ? 'active' : ''}`}
+              onClick={() => setActiveTab('add')}
+              title="Add Task"
+            >
+              <PlusCircle size={19} />
+            </button>
+
+            <button
+              className={`pill-tab ${activeTab === 'list' ? 'active' : ''}`}
+              onClick={() => setActiveTab('list')}
+              title="Task List"
+            >
+              <ListTodo size={19} />
+            </button>
+
+            {openCount > 0 && (
+              <span className="pill-floating-badge">
+                {openCount}
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="header-actions">
-          {activeTab === 'list' && (
-            <button 
-              className="btn-export-excel" 
-              onClick={handleExportExcel}
-              title="Export all tasks to formatted Excel spreadsheet"
-            >
-              <FileSpreadsheet size={18} />
-              <span>Export to Excel</span>
-            </button>
-          )}
+        {/* Top Control Bar: Status Filter Tabs on Left, Search & Actions on Right */}
+        {activeTab === 'list' && (
+          <div className="control-bar">
+            <div className="filter-tabs">
+              <button
+                className={`filter-tab ${filter === 'Open' ? 'active' : ''}`}
+                onClick={() => setFilter('Open')}
+              >
+                <span className="dot dot-open"></span>
+                Open ({openCount})
+              </button>
+              <button
+                className={`filter-tab ${filter === 'Done' ? 'active' : ''}`}
+                onClick={() => setFilter('Done')}
+              >
+                <span className="dot dot-done"></span>
+                Done ({doneCount})
+              </button>
+            </div>
 
-          <button 
-            className="theme-toggle-btn" 
-            onClick={() => setDarkMode(!darkMode)}
-            title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          >
-            {darkMode ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-        </div>
-      </header>
+            <div className="action-buttons-row">
+              <div className="search-box">
+                <Search size={16} className="search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search task"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
 
-      {/* Icon-Only Equal Width Slidable Top Pill Menu */}
-      <div className="pill-menu-container">
-        <div className="pill-menu-track">
-          <div 
-            className="pill-slider-highlight"
-            style={{
-              transform: activeTab === 'add' ? 'translateX(0px)' : 'translateX(64px)'
-            }}
-          />
-          <button
-            className={`pill-tab ${activeTab === 'add' ? 'active' : ''}`}
-            onClick={() => setActiveTab('add')}
-            title="Add Task"
-          >
-            <PlusCircle size={19} />
-          </button>
+              <button 
+                className="add-new-btn" 
+                onClick={() => setActiveTab('add')}
+                title="Add New Task"
+              >
+                <GradientPlusIcon size={22} />
+              </button>
 
-          <button
-            className={`pill-tab ${activeTab === 'list' ? 'active' : ''}`}
-            onClick={() => setActiveTab('list')}
-            title="Task List"
-          >
-            <ListTodo size={19} />
-          </button>
-
-          {openCount > 0 && (
-            <span className="pill-floating-badge">
-              {openCount}
-            </span>
-          )}
-        </div>
+              {tasks.length > 0 && (
+                <button 
+                  className="clear-all-btn" 
+                  onClick={handleClearAll}
+                  title="Clear All Tasks"
+                >
+                  <Trash2 size={22} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Content Area */}
@@ -277,56 +332,6 @@ export default function App() {
         ) : (
           /* TAB 2: Task List View */
           <div className="tab-pane fade-in">
-            {/* Top Control Bar: Status Filter Tabs on Left, Search & Actions on Right */}
-            <div className="control-bar">
-              <div className="filter-tabs">
-                <button
-                  className={`filter-tab ${filter === 'Open' ? 'active' : ''}`}
-                  onClick={() => setFilter('Open')}
-                >
-                  <span className="dot dot-open"></span>
-                  Open ({openCount})
-                </button>
-                <button
-                  className={`filter-tab ${filter === 'Done' ? 'active' : ''}`}
-                  onClick={() => setFilter('Done')}
-                >
-                  <span className="dot dot-done"></span>
-                  Done ({doneCount})
-                </button>
-              </div>
-
-              <div className="action-buttons-row">
-                <div className="search-box">
-                  <Search size={16} className="search-icon" />
-                  <input
-                    type="text"
-                    placeholder="Search task"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-
-                <button 
-                  className="add-new-btn" 
-                  onClick={() => setActiveTab('add')}
-                  title="Add New Task"
-                >
-                  <GradientPlusIcon size={22} />
-                </button>
-
-                {tasks.length > 0 && (
-                  <button 
-                    className="clear-all-btn" 
-                    onClick={handleClearAll}
-                    title="Clear All Tasks"
-                  >
-                    <Trash2 size={22} />
-                  </button>
-                )}
-              </div>
-            </div>
-
             {/* Task Table */}
             <section className="table-section">
               <TaskTable
